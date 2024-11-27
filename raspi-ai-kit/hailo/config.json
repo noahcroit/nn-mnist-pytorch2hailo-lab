@@ -1,0 +1,12 @@
+{
+	"hailo_arch":"hailo8",
+	"onnx_path":"../model_mnist.onnx",
+	"model_name":"model_mnist",
+	"name_start":"input",
+	"name_end":"output",
+	"size_input":"1,784",
+	"output_path":"output/",
+	"har_name":"model_mnist.har",
+	"quantized_har_name":"model_mnist.har",
+    "calib_set":"../calib_set.npy"
+}
