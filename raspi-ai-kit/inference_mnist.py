@@ -1,22 +1,9 @@
-from multiprocessing import Process
 import argparse
 import numpy as np
-from hailo_platform import (
-    HEF,
-    ConfigureParams,
-    FormatType,
-    HailoSchedulingAlgorithm,
-    HailoStreamInterface,
-    InferVStreams,
-    InputVStreamParams,
-    InputVStreams,
-    OutputVStreamParams,
-    OutputVStreams,
-    VDevice,
-)
 import cv2
 import queue
 import threading
+from time import process_time_ns
 
 
 
@@ -61,61 +48,89 @@ def task_queueframe():
         q.put(frame)
     stream.release()
 
-def run_inference(x):
+def run_inference(x, use_hailo=True):
     global network_group
     global input_vstreams_params
     global output_vstreams_params
 
     # Running inference
-    x = np.expand_dims(x, axis=0)
-    input_data = {input_vstream_info.name: x}
-    with InferVStreams(network_group, input_vstreams_params, output_vstreams_params) as infer_pipeline:
-        with network_group.activate(network_group_params):
-            infer_results = infer_pipeline.infer(input_data)
-            # The result output tensor is infer_results[output_vstream_info.name]
-            # print(f"Stream output shape is {infer_results[output_vstream_info.name].shape}")
-            return infer_results[output_vstream_info.name]
+    if use_hailo:
+        x = np.expand_dims(x, axis=0)
+        input_data = {input_vstream_info.name: x}
+        with InferVStreams(network_group, input_vstreams_params, output_vstreams_params) as infer_pipeline:
+            with network_group.activate(network_group_params):
+                infer_results = infer_pipeline.infer(input_data)
+                # The result output tensor is infer_results[output_vstream_info.name]
+                # print(f"Stream output shape is {infer_results[output_vstream_info.name].shape}")
+        # make decision from output with max()
+        # drop the softmax function since the predict outputs are 8-bit INT, easy to find max with argmax()
+        predict = np.argmax(infer_results[output_vstream_info.name])
+    else:
+        x = np.expand_dims(x, axis=0)
+        predict = np.argmax(session.run(None, {'input': x}))
+    return predict 
+
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     # Adding optional argument
-    parser.add_argument("-e", "--hef", help="Hailo Executable File (.hef)", default='model.hef')
+    parser.add_argument("-e", "--model", help="Onnx model (.onnx) or Hailo Executable File (.hef)", default='model.hef')
     parser.add_argument("-n", "--name", help="Model name", default='model')
-    parser.add_argument("-m", "--mode", help="test with local images (test) or live-stream (capture)", default='test')
+    parser.add_argument("-s", "--source", help="test with local images (local) or live-stream (live)", default='local')
+    parser.add_argument("-m", "--mode", help="onnx or hailo", default='hailo')
     args = parser.parse_args()
 
-    # Setting VDevice params to disable the HailoRT service feature
-    params = VDevice.create_params()
-    params.scheduling_algorithm = HailoSchedulingAlgorithm.NONE
+    if args.mode == 'hailo':
+        from hailo_platform import (
+            HEF,
+            ConfigureParams,
+            FormatType,
+            HailoSchedulingAlgorithm,
+            HailoStreamInterface,
+            InferVStreams,
+            InputVStreamParams,
+            InputVStreams,
+            OutputVStreamParams,
+            OutputVStreams,
+            VDevice,
+        )
+        # Setting VDevice params to disable the HailoRT service feature
+        params = VDevice.create_params()
+        params.scheduling_algorithm = HailoSchedulingAlgorithm.NONE
 
-    # The target can be used as a context manager (”with” statement) to ensure it's released on time.
-    # Here it's avoided for the sake of simplicity
-    target = VDevice(params=params)
-    # Loading compiled HEFs to device:
-    model_name = args.name
-    hef_path = args.hef
-    hef = HEF(hef_path)
+        # The target can be used as a context manager (”with” statement) to ensure it's released on time.
+        # Here it's avoided for the sake of simplicity
+        target = VDevice(params=params)
+        # Loading compiled HEFs to device:
+        model_name = args.name
+        hef_path = args.model
+        hef = HEF(hef_path)
 
-    # Get the ”network groups” (connectivity groups, aka. ”different networks”) ,information from the .hef
-    configure_params = ConfigureParams.create_from_hef(hef=hef, interface=HailoStreamInterface.PCIe)
-    network_groups = target.configure(hef, configure_params)
-    network_group = network_groups[0]
-    network_group_params = network_group.create_params()
+        # Get the ”network groups” (connectivity groups, aka. ”different networks”) ,information from the .hef
+        configure_params = ConfigureParams.create_from_hef(hef=hef, interface=HailoStreamInterface.PCIe)
+        network_groups = target.configure(hef, configure_params)
+        network_group = network_groups[0]
+        network_group_params = network_group.create_params()
 
-    # Create input and output virtual streams params
-    # Quantized argument signifies whether or not the incoming data is already quantized.
-    # Data is quantized by HailoRT if and only if quantized == False .
-    input_vstreams_params = InputVStreamParams.make(network_group, quantized=False, format_type=FormatType.FLOAT32)
-    output_vstreams_params = OutputVStreamParams.make(network_group, quantized=True, format_type=FormatType.UINT8)
+        # Create input and output virtual streams params
+        # Quantized argument signifies whether or not the incoming data is already quantized.
+        # Data is quantized by HailoRT if and only if quantized == False .
+        input_vstreams_params = InputVStreamParams.make(network_group, quantized=False, format_type=FormatType.FLOAT32)
+        output_vstreams_params = OutputVStreamParams.make(network_group, quantized=True, format_type=FormatType.UINT8)
 
-    # Define dataset params
-    input_vstream_info = hef.get_input_vstream_infos()[0]
-    output_vstream_info = hef.get_output_vstream_infos()[0]
-    print(input_vstream_info.shape)
-    print(output_vstream_info.shape)
-    
-    if args.mode == 'test':
+        # Define dataset params
+        input_vstream_info = hef.get_input_vstream_infos()[0]
+        output_vstream_info = hef.get_output_vstream_infos()[0]
+        print(input_vstream_info.shape)
+        print(output_vstream_info.shape)
+
+    elif args.mode == 'onnx':
+        import onnxruntime
+        # Load the ONNX model
+        session = onnxruntime.InferenceSession(args.model)
+        
+    if args.source == 'local':
         # inference with local images using opencv
         for number in range(10):
             # read image
@@ -132,22 +147,24 @@ if __name__ == "__main__":
             
             # apply Flattening()
             x = img.flatten()
-
+            
             # run hailo inference to flattened image data
-            predict = run_inference(x)
-            print(predict)
+            t_start = process_time_ns()
+            if args.mode == 'onnx':
+                predict = run_inference(x, use_hailo=False)
+            else:
+                predict = run_inference(x)
 
-            # make decision from output with max()
-            # drop the softmax function since the predict outputs are 8-bit INT, easy to find max
-            indices_predict = np.argmax(predict)
-            print("predicted number=", int(indices_predict))
-
-    elif args.mode == 'capture':
-        # inference with camera capture using opencv
+    elif args.source == 'live':
+        # inference with webcamera using opencv
         stream = cv2.VideoCapture(0)
+        stream.set(cv2.CAP_PROP_FRAME_WIDTH, 1280);
+        stream.set(cv2.CAP_PROP_FRAME_HEIGHT, 720);
         q = queue.Queue()
         t1 = threading.Thread(target=task_queueframe)
         t1.start()
+        fps_previous=0
+        t_previous = process_time_ns()
         while stream.isOpened():
             # drop old frames and read the recent frame
             frame_cnt = q.qsize()
@@ -162,21 +179,29 @@ if __name__ == "__main__":
                 
                 # apply Flattening()
                 x = frame_out.flatten()
-                # run hailo inference to flattened image data
-                predict = run_inference(x)
 
-                # make decision from output with max()
-                # drop the softmax function since the predict outputs are 8-bit INT, easy to find max
-                indices_predict = np.argmax(predict)
-                print("predicted number=", int(indices_predict))
+                # run hailo inference to flattened image data
+                t_start = process_time_ns()
+                if args.mode == 'onnx':
+                    predict = run_inference(x, use_hailo=False)
+                else:
+                    predict = run_inference(x)
 
                 # output / display
                 font = cv2.FONT_HERSHEY_SIMPLEX
                 h, w, _ = frame.shape
                 txcolor= (0, 255, 255)
-                cv2.putText(frame, str(indices_predict), (0, h - 40), font, 10, txcolor, 4, cv2.LINE_AA)
+                cv2.putText(frame, str(predict), (0, h - 40), font, 10, txcolor, 4, cv2.LINE_AA)
                 cv2.imshow("input", frame)
                 cv2.imshow("output", frame_out)
+
+                # FPS measurement
+                t_current = process_time_ns()
+                fps = 1/(t_current - t_previous)*1000000000
+                t_previous = t_current
+                fps = 0.75*fps_previous + 0.25*fps
+                fps_previous = fps
+                print("FPS=", round(fps, 1))
 
                 #check keyboard for exit program
                 key = cv2.waitKey(5) & 0xFF
