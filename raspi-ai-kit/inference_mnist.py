@@ -135,7 +135,6 @@ if __name__ == "__main__":
         for number in range(10):
             # read image
             img_path = '../img/' + str(number) + '.jpg'
-            print("run inference with the picture from ", img_path)
             img = cv2.imread(img_path)
             cv2.imshow("input number", img)
             cv2.waitKey(1500)
@@ -154,6 +153,7 @@ if __name__ == "__main__":
                 predict = run_inference(x, use_hailo=False)
             else:
                 predict = run_inference(x)
+            print("run inference with the picture from ", img_path, ", Predicted Num = ", predict)
 
     elif args.source == 'live':
         # inference with webcamera using opencv
@@ -186,15 +186,7 @@ if __name__ == "__main__":
                     predict = run_inference(x, use_hailo=False)
                 else:
                     predict = run_inference(x)
-
-                # output / display
-                font = cv2.FONT_HERSHEY_SIMPLEX
-                h, w, _ = frame.shape
-                txcolor= (0, 255, 255)
-                cv2.putText(frame, str(predict), (0, h - 40), font, 10, txcolor, 4, cv2.LINE_AA)
-                cv2.imshow("input", frame)
-                cv2.imshow("output", frame_out)
-
+                
                 # FPS measurement
                 t_current = process_time_ns()
                 fps = 1/(t_current - t_previous)*1000000000
@@ -202,6 +194,15 @@ if __name__ == "__main__":
                 fps = 0.75*fps_previous + 0.25*fps
                 fps_previous = fps
                 print("FPS=", round(fps, 1))
+
+                # output / display
+                font = cv2.FONT_HERSHEY_SIMPLEX
+                h, w, _ = frame.shape
+                txcolor= (0, 255, 255)
+                cv2.putText(frame, "FPS="+str(round(fps, 1)), (w - int(w*0.3), int(h*0.2)), font, 2, txcolor, 4, cv2.LINE_AA)
+                cv2.putText(frame, str(predict), (0, h - 40), font, 10, txcolor, 4, cv2.LINE_AA)
+                cv2.imshow("input", frame)
+                cv2.imshow("output", frame_out)
 
                 #check keyboard for exit program
                 key = cv2.waitKey(5) & 0xFF
