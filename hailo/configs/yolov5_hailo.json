@@ -1,0 +1,32 @@
+{
+  "model": {
+    "task": "yolov5",
+    "backend": "hailo",
+    "path": "models/yolov5s.hef",
+    "conf_threshold": 0.25,
+    "iou_threshold": 0.45,
+    "labels": null
+  },
+  "source": {
+    "type": "picamera2",
+    "device": 0,
+    "path": null,
+    "width": 1280,
+    "height": 720,
+    "fps": 30
+  },
+  "display": {
+    "show": true,
+    "show_preprocessed": false
+  },
+  "benchmark": {
+    "warmup_frames": 5,
+    "print_interval_s": 1.0,
+    "duration_s": 0,
+    "summary_file": "results/summary.jsonl"
+  },
+  "hailo": {
+    "input_format": "uint8",
+    "output_format": "float32"
+  }
+}
