@@ -23,6 +23,10 @@ runner = ClientRunner(har=hailo_model_har_name)
 #alls = "normalization1 = normalization([123.675, 116.28, 103.53], [58.395, 57.12, 57.375])\n"
 #runner.load_model_script(alls)
 
+# Model script file from the config (e.g. yolov5n.alls: normalization + NMS on the chip)
+if "model_script" in data:
+    runner.load_model_script(data["model_script"])
+
 # Call Optimize to perform the optimization process
 runner.optimize(data['calib_set'])
 # Save the result state to a Quantized HAR file

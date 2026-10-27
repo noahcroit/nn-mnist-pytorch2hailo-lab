@@ -1,0 +1,30 @@
+{
+  "model": {
+    "task": "mnist",
+    "backend": "hailo",
+    "path": "models/model_mnist.hef",
+    "ink_threshold": 100
+  },
+  "source": {
+    "type": "picamera2",
+    "device": 0,
+    "path": "img",
+    "width": 1280,
+    "height": 720,
+    "fps": 30
+  },
+  "display": {
+    "show": true,
+    "show_preprocessed": true
+  },
+  "benchmark": {
+    "warmup_frames": 10,
+    "print_interval_s": 1.0,
+    "duration_s": 0,
+    "summary_file": "results/summary.jsonl"
+  },
+  "hailo": {
+    "input_format": "float32",
+    "output_format": "float32"
+  }
+}
